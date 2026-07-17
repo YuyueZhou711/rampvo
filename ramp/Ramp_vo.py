@@ -103,7 +103,7 @@ class Ramp_vo:
     def load_weights(self, network):
         # load network from checkpoint file
         if isinstance(network, str):
-            checkpoint = torch.load(network)
+            checkpoint = torch.load(network, weights_only=False)
 
             if checkpoint.get('model_state_dict'):
                 state_dict = checkpoint['model_state_dict']

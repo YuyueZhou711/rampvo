@@ -92,7 +92,7 @@ def train(args):
     resume_train = False
     if args.ckpt is not None:
         resume_train = True
-        checkpoint = torch.load(args.ckpt)
+        checkpoint = torch.load(args.ckpt, weights_only=False)
         batch_idx = checkpoint["batch_idx"]
         step = checkpoint["total_idx"]
         model_state_dict = checkpoint["model_state_dict"]
