@@ -18,10 +18,17 @@ from .utils import (
     coords_grid_with_index,
     preprocess_input,
     get_channel_dim,
+    image_gradient,
     flatmeshgrid,
     pyramidify,
     set_depth,
     timer,
+)
+from .model_types import (
+    PatchifyOutput,
+    SelectorMode,
+    resolve_selector_mode,
+    validate_dino_configuration,
 )
 from .pose_prediction.pose_pred_utils import motion_bootstrap
 from .ba import BA
@@ -91,14 +98,21 @@ class Update(nn.Module):
 
 
 class Patchifier(nn.Module):
-    def __init__(self, channels_dim, patch_size=3, input_mode="MultiScale"):
+    def __init__(
+        self, channels_dim, patch_size=3, input_mode="MultiScale", dino_config=None
+    ):
         super(Patchifier, self).__init__()
         self.input_mode = input_mode
         self.P = patch_size
+        self.dino_branch = None
+        if dino_config and dino_config.get("enabled", False):
+            from .dinov2 import FrozenDINOBranch
+
+            self.dino_branch = FrozenDINOBranch(dino_config)
         # self.input_mode = "SingleScale"
         # self.input_mode = "MultiScale"
 
-        if self.input_mode in ("SingleScale"):
+        if self.input_mode == "SingleScale":
             evs_ch_dim, img_ch_dim = channels_dim
             self.encoder = MergerLSTMsceneEncoder(
                 evs_ch_dim=evs_ch_dim,
@@ -110,7 +124,7 @@ class Patchifier(nn.Module):
                 norm_fn_imap="none",
                 kernel_size_superstate=1,
             )
-        elif self.input_mode in ("MultiScale"):
+        elif self.input_mode == "MultiScale":
             evs_ch_dim, img_ch_dim = channels_dim
             self.encoder = MultiScaleMergerDoubleNet(
                 evs_ch_dim=evs_ch_dim,
@@ -128,25 +142,38 @@ class Patchifier(nn.Module):
     def forward(
         self,
         input_,
-        patches_per_image=80,
+        patches_per_image,
         reinit_hidden=False,
         disps=None,
-        event_bias=False,
-        gradient_bias=False,
+        selector_mode=None,
+        event_bias=None,
+        gradient_bias=None,
     ):
-        """Compute features and extract patches from input images"""
+        """Compute features and extract patches from input images."""
 
         events, images, mask = None, None, None
+        selector_mode = resolve_selector_mode(
+            selector_mode,
+            event_bias=event_bias,
+            gradient_bias=gradient_bias,
+        )
 
-        if self.input_mode in ("SingleScale"):
+        if self.input_mode == "SingleScale":
             events, images, _ = input_
-            fmap, imap, _ = self.encoder(events=events, images=images, reinit_hidden=reinit_hidden)
+            fmap, imap, _ = self.encoder(
+                events=events,
+                images=images,
+                reinit_hidden=reinit_hidden,
+            )
             fmap = fmap / 4.0
             imap = imap / 4.0
-        elif self.input_mode in ("MultiScale"):
+        elif self.input_mode == "MultiScale":
             events, images, mask = input_
             fmap, imap = self.encoder(
-                events=events, images=images, mask=mask, reinit_hidden=reinit_hidden
+                events=events,
+                images=images,
+                mask=mask,
+                reinit_hidden=reinit_hidden,
             )
             events = events[mask]
             fmap = fmap / 4.0
@@ -156,12 +183,34 @@ class Patchifier(nn.Module):
             imap = self.inet(input_) / 4.0
 
         if mask is not None and not mask.any():
-            return None, None, None, None, None, None
+            return None
 
-        b, n, c, h, w = fmap.shape
+        b, n, _, h, w = fmap.shape
+        if b != 1:
+            raise NotImplementedError("Patchifier currently supports batch size B=1 only")
 
-        # bias selection towards regions with highest value of event mean map
-        if event_bias:
+        dino_output = None
+        if self.dino_branch is not None:
+            dino_images = images
+            if mask is not None:
+                if mask.ndim == 1:
+                    if mask.numel() != images.shape[1]:
+                        raise ValueError("Online image mask must have shape [N]")
+                    dino_images = images[:, mask]
+                elif mask.ndim == 2 and mask.shape[0] == 1:
+                    dino_images = images[mask].unsqueeze(0)
+                else:
+                    raise ValueError(
+                        "MultiScale image mask must have shape [N] or [1,N]"
+                    )
+            if dino_images.shape[1] != n:
+                raise AssertionError(
+                    "DINO/RAMP frame count mismatch: "
+                    f"dino={dino_images.shape[1]}, ramp={n}"
+                )
+            dino_output = self.dino_branch(dino_images)
+
+        if selector_mode == SelectorMode.EVENT:
             event_inp = events if events is not None else input_
             coords = get_coords_from_topk_events(
                 events=event_inp,
@@ -169,38 +218,80 @@ class Patchifier(nn.Module):
                 border_suppression_size=0,
                 non_max_supp_rad=11,
             )
-        elif gradient_bias:
+        elif selector_mode == SelectorMode.GRADIENT:
             images_inp = images if images is not None else input_
-            g = self.__image_gradient(images_inp)
-            x = torch.randint(1, w - 1, size=[n, 3 * patches_per_image], device="cuda")
-            y = torch.randint(1, h - 1, size=[n, 3 * patches_per_image], device="cuda")
-
+            gradient = image_gradient(images_inp)
+            x = torch.randint(
+                1,
+                w - 1,
+                size=[n, 3 * patches_per_image],
+                device=fmap.device,
+            )
+            y = torch.randint(
+                1,
+                h - 1,
+                size=[n, 3 * patches_per_image],
+                device=fmap.device,
+            )
+            candidate_coords = torch.stack([x, y], dim=-1).float()
+            gradient = altcorr.patchify(
+                gradient[0, :, None], candidate_coords, 0
+            ).view(n, 3 * patches_per_image)
+            order = torch.argsort(gradient, dim=1)
+            x = torch.gather(x, 1, order[:, -patches_per_image:])
+            y = torch.gather(y, 1, order[:, -patches_per_image:])
             coords = torch.stack([x, y], dim=-1).float()
-            g = altcorr.patchify(g[0, :, None], coords, 0).view(n, 3 * patches_per_image)
-
-            ix = torch.argsort(g, dim=1)
-            x = torch.gather(x, 1, ix[:, -patches_per_image:])
-            y = torch.gather(y, 1, ix[:, -patches_per_image:])
-        # random patch selection
+        elif selector_mode == SelectorMode.RANDOM:
+            x = torch.randint(
+                1,
+                w - 1,
+                size=[n, patches_per_image],
+                device=fmap.device,
+            )
+            y = torch.randint(
+                1,
+                h - 1,
+                size=[n, patches_per_image],
+                device=fmap.device,
+            )
+            coords = torch.stack([x, y], dim=-1).float()
         else:
-            x = torch.randint(1, w - 1, size=[n, patches_per_image], device="cuda")
-            y = torch.randint(1, h - 1, size=[n, patches_per_image], device="cuda")
-            coords = torch.stack([x, y], dim=-1).float()
+            raise NotImplementedError(
+                f"selector_mode={selector_mode.value!r} is reserved for a later phase"
+            )
 
-        gmap = altcorr.patchify(fmap[0], coords, 1).view(b, -1, 128, self.P, self.P)
+        gmap = altcorr.patchify(fmap[0], coords, 1).view(
+            b, -1, 128, self.P, self.P
+        )
         imap = altcorr.patchify(imap[0], coords, 0).view(b, -1, DIM, 1, 1)
 
         if disps is None:
-            disps = torch.ones(b, n, h, w, device="cuda")
+            disps = torch.ones(b, n, h, w, device=fmap.device)
 
         grid, _ = coords_grid_with_index(disps, device=fmap.device)
-        patches = altcorr.patchify(grid[0], coords, self.P // 2).view(b, -1, 3, self.P, self.P)
+        patches = altcorr.patchify(grid[0], coords, self.P // 2).view(
+            b, -1, 3, self.P, self.P
+        )
 
-        index = torch.arange(n, device="cuda").view(n, 1)
+        index = torch.arange(n, device=fmap.device).view(n, 1)
         index = index.repeat(1, patches_per_image).reshape(-1)
-        
-        clr = altcorr.patchify(images[0], 4*(coords + 0.5), 0).view(b, -1, 3)
-        return fmap, gmap, imap, patches, index, clr
+
+        colors = altcorr.patchify(images[0], 4 * (coords + 0.5), 0).view(b, -1, 3)
+        return PatchifyOutput(
+            fmap=fmap,
+            gmap=gmap,
+            imap=imap,
+            patches=patches,
+            frame_index=index,
+            colors=colors,
+            coords=coords,
+            prior_logits=None if dino_output is None else dino_output.prior_logits,
+            inv_depth=None if dino_output is None else dino_output.inv_depth,
+            context_dino=None if dino_output is None else dino_output.context_dino,
+            matching_residual=(
+                None if dino_output is None else dino_output.matching_residual
+            ),
+        )
 
 
 class CorrBlock:
@@ -232,10 +323,18 @@ class CorrBlock:
 class VONet(nn.Module):
     def __init__(self, cfg):
         super(VONet, self).__init__()
+        validate_dino_configuration(cfg)
         self.P = 3
         self.RES = 4
         self.DIM = DIM
-        self.EVENT_BIAS = cfg["event_bias"]
+        self.PATCHES_PER_FRAME = int(cfg.get("patches_per_frame", 80))
+        self.TRAIN_SELECTOR_MODE = resolve_selector_mode(
+            cfg.get("train_selector_mode"),
+            event_bias=cfg.get("event_bias"),
+            gradient_bias=cfg.get("gradient_bias"),
+        )
+        # Retained for callers that still inspect the legacy attribute.
+        self.EVENT_BIAS = self.TRAIN_SELECTOR_MODE == SelectorMode.EVENT
         self.MOTION_MODEL = "DAMPED_LINEAR"
         self.MOTION_DAMPING = 0.5
         self.inp_channel_dims = get_channel_dim(cfg)
@@ -244,7 +343,8 @@ class VONet(nn.Module):
         self.patchify = Patchifier(
             channels_dim=self.inp_channel_dims,
             patch_size=self.P,
-            input_mode=self.input_mode
+            input_mode=self.input_mode,
+            dino_config=cfg.get("dino"),
         )
         self.update = Update(self.P)
 
@@ -260,12 +360,21 @@ class VONet(nn.Module):
 
         # fmap: extracted feature map, gmap:, imap:,
         # patches: depths patches, ix: image indices (img 1, img 2, ...)
-        fmap, gmap, imap, patches, ix = self.patchify(
+        patchify_output = self.patchify(
             input_=input_,
+            patches_per_image=self.PATCHES_PER_FRAME,
             disps=disps,
             reinit_hidden=True,
-            event_bias=self.EVENT_BIAS,
+            selector_mode=self.TRAIN_SELECTOR_MODE,
         )
+        if patchify_output is None:
+            raise RuntimeError("Training input did not contain an image timestamp")
+
+        fmap = patchify_output.fmap
+        gmap = patchify_output.gmap
+        imap = patchify_output.imap
+        patches = patchify_output.patches
+        ix = patchify_output.frame_index
 
         corr_fn = CorrBlock(fmap, gmap)
 

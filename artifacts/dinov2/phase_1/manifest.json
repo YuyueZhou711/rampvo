@@ -1,0 +1,108 @@
+{
+  "phase": 1,
+  "name": "frozen_dino_depth_anything_skeleton",
+  "status": "passed",
+  "created_on": "2026-08-05",
+  "git_commit_at_start": "f0e12a413f9ff538227fc821af4315f96f928951",
+  "seed": 1234,
+  "upstream": {
+    "repository": "https://github.com/DepthAnything/Depth-Anything-V2",
+    "commit": "a561b849ebae10a6f5ef49e26c83cbbcd36c71bf",
+    "model": "Depth-Anything-V2-Small",
+    "encoder": "vits",
+    "model_revision": "depth-anything/Depth-Anything-V2-Small@05bbaec5306c04f1fa00a8c376c7dcf4153e7fe8",
+    "license": "Apache-2.0",
+    "vendor_path": "ramp/third_party/depth_anything_v2",
+    "vendor_python_and_license_tree_sha256": "b612e5b98b448351f4a456512d43bb33771beb3580b2deb91e2c9407b3104e6c"
+  },
+  "assets": {
+    "dino_checkpoint": "checkpoints/depth_anything_v2_vits.pth",
+    "dino_checkpoint_sha256": "715fade13be8f229f8a70cc02066f656f2423a59effd0579197bbf57860e1378",
+    "dino_checkpoint_state_tensors": 239,
+    "dino_checkpoint_strict_load": true,
+    "phase_0_checkpoint_sha256": "3351302695e232afdc85236d067e43d004e26e317455991e43b6bb4eba5f4305",
+    "phase_1_checkpoint": "artifacts/dinov2/phase_1/phase_1_extractor.pth",
+    "phase_1_checkpoint_sha256": "74435180a5f27518c8f689bf4bafc5cf58329c4492d32ab86db2e8309ba3b204",
+    "phase_1_state_tensors": 497,
+    "phase_1_checkpoint_strict_load": true
+  },
+  "configuration": {
+    "network_config": "config_net/MultiScale_TartanEvent_DINOv2.json",
+    "network_config_sha256": "17d60041b8b472b670a903d7cf6b381df12afe6dc67e02e0e0783a9917ebc0ef",
+    "vo_config": "config_vo/dinov2.yaml",
+    "vo_config_sha256": "1410c30dd5db80ad0fde70226900fb9304aa2aefe63980a33985e9ffb82de781",
+    "patches_per_frame": 80,
+    "micro_batch": 1,
+    "amp_dtype": "float16",
+    "freeze_pretrained": true,
+    "matching_enabled": false,
+    "ramp_integration": "side_outputs_only"
+  },
+  "implementation": {
+    "preprocess": "restore RAMP range, clamp [0,1], replicate-pad to 14, ImageNet normalize",
+    "input_480x640_padded": [490, 644],
+    "token_grid": [35, 46],
+    "context_shape_n15": [1, 15, 384, 120, 160],
+    "prior_shape_n15": [1, 15, 1, 120, 160],
+    "inverse_depth_shape_n15": [1, 15, 1, 120, 160],
+    "matching_residual": null,
+    "pretrained_modules": ["DINOv2-S/14", "shared reassemble", "official depth refinement/output"],
+    "trainable_modules": ["context fusion head", "prior fusion head"]
+  },
+  "verification": {
+    "compileall": "passed",
+    "pytest": {
+      "status": "passed",
+      "tests": 16
+    },
+    "preprocess_contract": "passed",
+    "depth_finite_nonnegative": "passed",
+    "official_depth_alignment": {
+      "status": "passed",
+      "float32_max_abs": 0.0
+    },
+    "frozen_after_top_level_train": "passed",
+    "frozen_parameter_update_max_abs": 0.0,
+    "new_head_finite_gradient_and_update": "passed",
+    "ramp_side_output_equivalence": {
+      "status": "passed",
+      "legacy_output_max_abs": 0.0
+    },
+    "n15_micro_batch_equivalence": {
+      "status": "passed",
+      "comparison": "micro_batch=1 versus micro_batch=15",
+      "rtol": 0.005,
+      "atol": 0.005,
+      "max_abs_context": 0.00244140625,
+      "max_abs_prior": 0.0013427734375,
+      "max_abs_depth": 0.0057489871978759766,
+      "micro_batch_1_seconds": 0.729661765974015,
+      "micro_batch_15_seconds": 0.20338173501659185,
+      "micro_batch_1_peak_mib": 652.587890625,
+      "micro_batch_15_peak_mib": 1838.326171875
+    },
+    "online_short_sequence": {
+      "status": "passed",
+      "dataset": "AquaticVision/Easy/01_Scan_with_board",
+      "frames": [0, 127],
+      "output_frames": 128,
+      "associated_frames": 124,
+      "hard_failures": 0,
+      "valid_trajectory_ratio": 1.0,
+      "sim3_ate_rmse_m": 0.012460489143042248,
+      "se3_ate_rmse_m": 0.01953721736290359,
+      "phase_0_sim3_ate_ratio": 1.0280655011953992,
+      "gpu_latency_p50_ms": 32.28561592102051,
+      "gpu_latency_p95_ms": 41.438943481445314,
+      "peak_memory_mib": 335.19287109375
+    }
+  },
+  "environment": {
+    "conda_environment": "rampvo",
+    "torch": "2.11.0+cu128",
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "driver": "580.173.02",
+    "gpu_memory_mib": 32607
+  },
+  "gate": "passed"
+}

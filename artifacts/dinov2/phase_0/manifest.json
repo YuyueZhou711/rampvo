@@ -1,0 +1,111 @@
+{
+  "phase": 0,
+  "name": "fixed_baseline",
+  "status": "passed",
+  "created_on": "2026-08-05",
+  "baseline": {
+    "git_commit": "f0e12a413f9ff538227fc821af4315f96f928951",
+    "network_config": "config_net/MultiScale_TartanEvent.json",
+    "network_config_sha256_before_phase_0": "472b7ea499109c924b221ed339f0609a20572fb5be29350d0156daed9e2afdcf",
+    "vo_config": "config_vo/default.yaml",
+    "vo_config_sha256_before_phase_0": "dbfdc7aac41c1c744f01575c5d2112fb3c2f75211bf37986d81b356bf268296a",
+    "checkpoint": "checkpoints/RAMPVO_MultiScale.pth",
+    "checkpoint_sha256": "3351302695e232afdc85236d067e43d004e26e317455991e43b6bb4eba5f4305",
+    "dataset_index": "datasets_pickle/TartanEvent.pickle",
+    "dataset_index_sha256": "1718c1cc511387fd4996b96aac281bb589a7319b890f26d96d7ca226032ce0ce",
+    "fixed_validation_sequences": [
+      "AquaticVision/Easy/01_Scan_with_board:frames_0000_0127",
+      "AquaticVision/Easy/01_Scan_with_board:frames_0640_0767",
+      "AquaticVision/Easy/01_Scan_with_board:frames_1280_1407"
+    ],
+    "aquaticvision_cache_sha256": "9274dae4f46cb3d0b86a0e8ad7c21a69eabfd7f7098d9cb690ed6af93a88d6df",
+    "aquaticvision_gt_sha256": "e8ec2b6bd270888de8b1eb9c713334e10dcf1b26b684aa98cf3a7b5cfbfec951"
+  },
+  "phase_0_config": {
+    "network_config_sha256": "7fad0952eef1bb85a12aaa3ccae422640cb5a46739141f086ca848e862a1d0a8",
+    "vo_config_sha256": "1d12f09fb67e5b1275396d147fc5a6ddf23848820881e7424c8f3c1be99990a4",
+    "seed": 1234,
+    "patches_per_frame_train": 80,
+    "patches_per_frame_online": 80,
+    "train_selector_mode": "event",
+    "eval_selector_mode": "event",
+    "dino_enabled": false
+  },
+  "environment": {
+    "conda_environment": "rampvo",
+    "torch": "2.11.0+cu128",
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "driver": "580.173.02",
+    "gpu_memory_mib": 32607
+  },
+  "verification": {
+    "compileall": "passed",
+    "phase_0_pytest": {
+      "status": "passed",
+      "tests": 6
+    },
+    "legacy_checkpoint_strict_load": {
+      "status": "passed",
+      "missing_keys": [],
+      "unexpected_keys": []
+    },
+    "dino_disabled_new_parameters": 0,
+    "patchify_numeric_regression": {
+      "status": "passed",
+      "max_abs_fmap": 0.0,
+      "max_abs_gmap": 0.0,
+      "max_abs_imap": 0.0,
+      "max_abs_patches": 0.0,
+      "threshold": 1e-06
+    },
+    "online_single_frame_k80": {
+      "status": "passed",
+      "patch_count": 80,
+      "finite": true
+    },
+    "synthetic_full_forward_backward": {
+      "status": "passed",
+      "optimizer_steps": 2,
+      "smoke_patches_per_frame": 8,
+      "losses": [
+        0.019782045856118202,
+        0.011111374944448471
+      ],
+      "finite_gradients": true,
+      "peak_memory_mib": 231.24
+    },
+    "real_data_two_step_train": {
+      "status": "passed",
+      "dataset": "AquaticVision/Easy/01_Scan_with_board",
+      "optimizer_steps": 2,
+      "patches_per_frame": 80,
+      "losses": [
+        0.7386370897293091,
+        1.1017365455627441
+      ],
+      "finite_gradients": true,
+      "probe_max_abs_update": 6.034970283508301e-06,
+      "peak_memory_mib": 13527.30322265625,
+      "depth_supervision": "constant_disparity_smoke_only"
+    },
+    "fixed_short_sequence_trajectory_and_ate": {
+      "status": "passed",
+      "dataset": "AquaticVision/Easy/01_Scan_with_board",
+      "windows": 3,
+      "frames_per_window": 128,
+      "hard_failures": 0,
+      "valid_trajectory_ratio": 1.0,
+      "sim3_ate_rmse_m": [
+        0.012120326115946522,
+        0.021510364951436933,
+        0.014324397675642597
+      ],
+      "details": "artifacts/dinov2/phase_0/aquatic_easy01/gate_summary.json"
+    }
+  },
+  "output_checkpoint": {
+    "path": "artifacts/dinov2/phase_0/phase_0_baseline.pth",
+    "kind": "symlink_to_strictly_verified_legacy_baseline",
+    "sha256": "3351302695e232afdc85236d067e43d004e26e317455991e43b6bb4eba5f4305"
+  }
+}

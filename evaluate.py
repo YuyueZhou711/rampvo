@@ -313,12 +313,28 @@ def evaluate_sequence(
 
 @torch.no_grad()
 def evaluate(
-    net, trials=1, downsample_fact=1, config_VO=None, eval_cfg=None, results_path=None
+    net,
+    trials=1,
+    downsample_fact=1,
+    config_VO=None,
+    eval_cfg=None,
+    results_path=None,
+    dataset_path=None,
+    validation_subset=None,
 ):
     test_ = eval_cfg["data_loader"]["test"]
     train_ = eval_cfg["data_loader"]["train"]["args"]
     norm_to = train_["norm_to"] if train_.get("norm_to") else None
-    test_split = test_["test_split"]
+    test_split = list(test_["test_split"])
+    if validation_subset:
+        requested = set(validation_subset)
+        test_split = [scene for scene in test_split if scene in requested]
+        missing = requested.difference(test_split)
+        if missing:
+            raise ValueError(
+                "validation_subset contains scenes absent from test_split: "
+                + ", ".join(sorted(missing))
+            )
     dataset_name = test_["dataset_name"]
     use_pose_pred = test_["use_pose_pred"]
 
@@ -327,8 +343,11 @@ def evaluate(
         config_VO.merge_from_file("config/default.yaml")
 
     results = {}
-    for scene in test_split:
-        print(f"loading training data ... scene:{scene}")
+    for configured_scene in test_split:
+        scene = configured_scene
+        if dataset_path is not None and not os.path.isabs(scene):
+            scene = osp.join(dataset_path, scene)
+        print(f"loading evaluation data ... scene:{scene}")
         if not os.path.exists(scene):
             raise FileNotFoundError(f"scene {scene} not found")
         traj_ref_path = osp.join(scene, "pose_left.txt")
@@ -419,6 +438,8 @@ if __name__ == "__main__":
     parser.add_argument("--trials", type=int, default=1)
     parser.add_argument("--downsample_fact", type=int, default=1)
     parser.add_argument("--results_path", type=str, default=None)
+    parser.add_argument("--data_path", type=str, default=None)
+    parser.add_argument("--validation_subset", nargs="*", default=None)
 
     args = parser.parse_args()
 
@@ -434,6 +455,8 @@ if __name__ == "__main__":
         trials=args.trials,
         downsample_fact=args.downsample_fact,
         results_path=args.results_path,
+        dataset_path=args.data_path,
+        validation_subset=args.validation_subset,
     )
     for k in results:
         print(k, results[k])

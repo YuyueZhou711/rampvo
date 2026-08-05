@@ -1,0 +1,52 @@
+{
+  "associated_frames": 123,
+  "sim3_ate": {
+    "rmse": 0.021510364951436933,
+    "median": 0.01728467063992448,
+    "p90": 0.030527549105789722,
+    "scale": 1.909772985243
+  },
+  "se3_ate": {
+    "rmse": 0.05909812273704068,
+    "median": 0.04879166737293664,
+    "p90": 0.09659358749542303,
+    "scale": 1.0
+  },
+  "translation_rpe_20f": {
+    "rmse": 0.03243965397072773,
+    "median": 0.027981865324396123
+  },
+  "rotation_rpe_20f": {
+    "rmse": 0.1052413417551509,
+    "median": 0.0971217394791173,
+    "p90": 0.13610559985147108
+  },
+  "translation_rpe_100f": {
+    "rmse": 0.03019151906820831,
+    "median": 0.025724699904985354
+  },
+  "rotation_rpe_100f": {
+    "rmse": 0.291773717396757,
+    "median": 0.29097441091706416,
+    "p90": 0.30845122310955114
+  },
+  "mode": "B0",
+  "adapter_mode": "disabled",
+  "seed": 1234,
+  "frames": 128,
+  "output_frames": 128,
+  "hard_failures": 0,
+  "valid_trajectory_ratio": 1.0,
+  "longest_failure": 0,
+  "latency_p50_ms": 26.018708536867052,
+  "latency_p95_ms": 27.039997070096433,
+  "gpu_latency_p50_ms": 25.94099235534668,
+  "gpu_latency_p95_ms": 26.97125587463379,
+  "latency_skip_frames": 0,
+  "steady_frames": 128,
+  "steady_latency_p50_ms": 26.018708536867052,
+  "steady_latency_p95_ms": 27.039997070096433,
+  "steady_gpu_latency_p50_ms": 25.94099235534668,
+  "steady_gpu_latency_p95_ms": 26.97125587463379,
+  "peak_memory_bytes": 251371520
+}

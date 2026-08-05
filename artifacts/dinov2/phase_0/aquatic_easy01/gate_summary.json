@@ -1,0 +1,94 @@
+{
+  "dataset": "AquaticVision/Easy/01_Scan_with_board",
+  "cache": {
+    "path": "../artifacts/aquaticvision/sequence01/cache/sequence01.h5",
+    "sha256": "9274dae4f46cb3d0b86a0e8ad7c21a69eabfd7f7098d9cb690ed6af93a88d6df",
+    "frames": 1860,
+    "shape": [260, 346],
+    "event_bins": 5
+  },
+  "ground_truth": {
+    "path": "../artifacts/aquaticvision/sequence01/gt.csv",
+    "sha256": "e8ec2b6bd270888de8b1eb9c713334e10dcf1b26b684aa98cf3a7b5cfbfec951",
+    "maximum_association_delta_ms": 25.0
+  },
+  "training_smoke": {
+    "status": "passed",
+    "seed": 1234,
+    "optimizer_steps": 2,
+    "steps_per_forward": 18,
+    "patches_per_frame": 80,
+    "padded_shape": [264, 352],
+    "constant_disparity": 1.4285714285714286,
+    "pose_translation_scale": 0.7,
+    "finite_gradients": true,
+    "probe_parameter": "patchify.encoder.ev_encoders.0.conv_1.weight",
+    "probe_max_abs_update": 0.000006034970283508301,
+    "peak_memory_mib": 13527.30322265625,
+    "steps": [
+      {
+        "frames": [0, 14],
+        "loss": 0.7386370897293091,
+        "flow_error": 0.07867654412984848,
+        "rotation_error": 0.0037461062893271446,
+        "translation_error": 0.0011339114280417562,
+        "gradient_norm_before_clip": 7.305581092834473,
+        "max_gt_association_ms": 2.25067138671875
+      },
+      {
+        "frames": [40, 54],
+        "loss": 1.1017365455627441,
+        "flow_error": 0.10994939506053925,
+        "rotation_error": 0.0031976038590073586,
+        "translation_error": 0.003972817212343216,
+        "gradient_norm_before_clip": 6.2235565185546875,
+        "max_gt_association_ms": 2.622365951538086
+      }
+    ],
+    "note": "AquaticVision has no depth ground truth. Constant disparity is used only to exercise the supervised RAMP training path; this two-step smoke is not a performance-training result."
+  },
+  "trajectory_windows": {
+    "status": "passed",
+    "seed": 1234,
+    "patches_per_frame": 80,
+    "windows": [
+      {
+        "name": "early_0000_0127",
+        "frames": [0, 127],
+        "associated_frames": 124,
+        "output_frames": 128,
+        "hard_failures": 0,
+        "valid_trajectory_ratio": 1.0,
+        "sim3_ate_rmse_m": 0.012120326115946522,
+        "se3_ate_rmse_m": 0.021449708720109265,
+        "translation_rpe_20f_rmse_m": 0.015145506236984284,
+        "rotation_rpe_20f_rmse_rad": 0.08863015392324373
+      },
+      {
+        "name": "middle_0640_0767",
+        "frames": [640, 767],
+        "associated_frames": 123,
+        "output_frames": 128,
+        "hard_failures": 0,
+        "valid_trajectory_ratio": 1.0,
+        "sim3_ate_rmse_m": 0.021510364951436933,
+        "se3_ate_rmse_m": 0.05909812273704068,
+        "translation_rpe_20f_rmse_m": 0.03243965397072773,
+        "rotation_rpe_20f_rmse_rad": 0.1052413417551509
+      },
+      {
+        "name": "late_1280_1407",
+        "frames": [1280, 1407],
+        "associated_frames": 120,
+        "output_frames": 128,
+        "hard_failures": 0,
+        "valid_trajectory_ratio": 1.0,
+        "sim3_ate_rmse_m": 0.014324397675642597,
+        "se3_ate_rmse_m": 0.05845673273811459,
+        "translation_rpe_20f_rmse_m": 0.020875316813434772,
+        "rotation_rpe_20f_rmse_rad": 0.12044045576643606
+      }
+    ]
+  },
+  "gate": "passed"
+}

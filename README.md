@@ -83,6 +83,26 @@ Download the pre-trained checkpoints and place them a the `checkpoints` folder.
 </tr>
 </tbody></table>
 
+
+## Frozen DINOv2 / Depth Anything V2 branch
+
+The staged DINO-VO adaptation uses the vendored Depth Anything V2 Small source
+at commit `a561b849ebae10a6f5ef49e26c83cbbcd36c71bf`. Place the official
+`depth_anything_v2_vits.pth` checkpoint in `checkpoints/`; construction fails
+if its SHA256 is not
+`715fade13be8f229f8a70cc02066f656f2423a59effd0579197bbf57860e1378`.
+The runtime never downloads weights implicitly. Verify the local asset with:
+
+```shell
+python scripts/verify_dino_checkpoint.py \
+  --checkpoint checkpoints/depth_anything_v2_vits.pth
+```
+
+Phase 1 configuration is in
+`config_net/MultiScale_TartanEvent_DINOv2.json`. In this phase the frozen branch
+only exposes context, prior-logit and relative inverse-depth side outputs; it
+does not change RAMP matching, context, patch selection, Update or BA.
+
 ## Datasets
 
 ### TartanEvent

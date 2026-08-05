@@ -1,7 +1,5 @@
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = GPU_NUM = "7"
-
 import json
 import time
 import torch
@@ -16,15 +14,49 @@ from evaluate import evaluate as validate
 from ramp.data_readers.TartanEvent import TartanEvent
 from ramp.lietorch import SE3
 from ramp.net import VONet
+from ramp.checkpoints import load_ramp_state_dict
 from ramp.utils import kabsch_umeyama
-seed_everything(seed=1234)
 
 try:
     import wandb
     log = True
-except:
-    print("WARNING: wandb is not installed, cannot log results, please install wandb to log results")
+except ImportError:
+    print("WARNING: wandb is not installed, cannot log results")
     log = False
+
+
+def normalize_checkpoint_state(checkpoint):
+    state_dict = checkpoint.get("model_state_dict", checkpoint)
+    return OrderedDict(
+        (key.replace("module.", ""), value)
+        for key, value in state_dict.items()
+        if "update.lmbda" not in key
+    )
+
+
+def load_checkpoint(path, net, optimizer, scheduler):
+    """Load a legacy weights-only checkpoint or resume a training checkpoint."""
+    checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+    load_ramp_state_dict(net, normalize_checkpoint_state(checkpoint))
+
+    resume_keys = {
+        "batch_idx",
+        "total_idx",
+        "optimizer_state_dict",
+        "scheduler_state_dict",
+    }
+    if not isinstance(checkpoint, dict) or not resume_keys.issubset(checkpoint):
+        return 1, 0, 0, False
+
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+    return (
+        checkpoint["batch_idx"],
+        checkpoint.get("epoch", 0),
+        checkpoint["total_idx"],
+        True,
+    )
+
 
 def compute_losses(traj, so, train_config, patch_size):
     loss = 0.0
@@ -66,7 +98,9 @@ def compute_losses(traj, so, train_config, patch_size):
 
 def train(args):
     """main training loop"""
-    config = json.load(open(args.config_path))
+    seed_everything(seed=args.seed)
+    with open(args.config_path, encoding="utf-8") as config_file:
+        config = json.load(config_file)
     train_cfg = config["data_loader"]["train"]["args"]
     log_results = args.log_results and log
 
@@ -87,32 +121,23 @@ def train(args):
         anneal_strategy="linear",
     )
 
-    # Import the checkpoint data if provided
+    # Import either legacy weights or a resumable training checkpoint.
     batch_idx, epoch, step = 1, 0, 0
     resume_train = False
     if args.ckpt is not None:
-        resume_train = True
-        checkpoint = torch.load(args.ckpt, weights_only=False)
-        batch_idx = checkpoint["batch_idx"]
-        step = checkpoint["total_idx"]
-        model_state_dict = checkpoint["model_state_dict"]
-        epoch = checkpoint["epoch"] if checkpoint.get("epoch") else 0
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        batch_idx, epoch, step, resume_train = load_checkpoint(
+            args.ckpt, net, optimizer, scheduler
+        )
 
-        new_state_dict = OrderedDict()
-        for k, v in model_state_dict.items():
-            new_state_dict[k.replace("module.", "")] = v
-        net.load_state_dict(new_state_dict, strict=False)
-
-    # instantiate the dataloader
-    Dataloader = partial(
-        DataLoader,
-        batch_size=train_cfg["batch_size"],
-        shuffle=train_cfg["shuffle"],
-        num_workers=args.workers,
-        prefetch_factor=1,
-    )
+    # prefetch_factor is only valid when multiprocessing workers are enabled.
+    dataloader_kwargs = {
+        "batch_size": train_cfg["batch_size"],
+        "shuffle": train_cfg["shuffle"],
+        "num_workers": args.workers,
+    }
+    if args.workers > 0:
+        dataloader_kwargs["prefetch_factor"] = 1
+    Dataloader = partial(DataLoader, **dataloader_kwargs)
 
     # Name your experiment through name argument or with config file
     run_name = args.name if args.name is not None else config["experiment_name"]
@@ -126,6 +151,8 @@ def train(args):
         )
         wandb.watch(net, log="all")
 
+    steps_run = 0
+    stop_training = False
     for curr_epoch in range(10):
         if curr_epoch < epoch:
             continue
@@ -137,10 +164,10 @@ def train(args):
             )
 
         for batch_idx, data_blob in enumerate(pbar):
-            step += 1
-            # skip the batches before the saved batch_idx
             if data_blob == 0:
                 continue
+            step += 1
+            steps_run += 1
 
             events, images, poses, disps, K, supervision_mask = [x.to("cuda") for x in data_blob]
 
@@ -180,8 +207,7 @@ def train(args):
             if step % train_cfg["steps_to_save_ckpt"] == 0:
                 torch.cuda.empty_cache()
                 directory = os.path.join("checkpoints", run_name)
-                if not os.path.isdir(directory):
-                    os.mkdir(directory)
+                os.makedirs(directory, exist_ok=True)
                 PATH = directory + "/%s_%06d.pth" % (run_name, step)
                 torch.save(
                     {
@@ -199,12 +225,15 @@ def train(args):
                 if train_cfg.get("steps_to_do_validation") is not None:
                     steps_to_do_validation = train_cfg["steps_to_do_validation"]
                 
+                validation_results = None
                 if step > steps_to_do_validation:
-                    validation_results = None
                     try:
                         valid_start = time.time()
                         validation_results = validate(
-                            dataset_path=args.data_path, eval_cfg=config, net=net
+                            dataset_path=args.data_path,
+                            eval_cfg=config,
+                            net=net,
+                            validation_subset=args.validation_subset,
                         )
                         for k in validation_results:
                             print(k, validation_results[k])
@@ -219,14 +248,34 @@ def train(args):
                 torch.cuda.empty_cache()
                 net.train()
 
+            if args.max_steps is not None and steps_run >= args.max_steps:
+                stop_training = True
+                break
+
+        if stop_training:
+            break
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", type=str, help="Dataset path")
     parser.add_argument("--name", type=str, default=None, help="name your experiment")
     parser.add_argument("--ckpt", type=str, help="checkpoint to restore")
-    parser.add_argument("--config_path", type=str, help="config file path")
+    parser.add_argument("--config_path", type=str, required=True, help="config file path")
     parser.add_argument("--log_results", action="store_true", default=False)
     parser.add_argument("--workers", type=int, default=0)
+    parser.add_argument("--seed", type=int, default=1234)
+    parser.add_argument(
+        "--max_steps",
+        type=int,
+        default=None,
+        help="maximum optimizer steps in this invocation",
+    )
+    parser.add_argument(
+        "--validation_subset",
+        nargs="*",
+        default=None,
+        help="optional relative scene paths to evaluate",
+    )
 
     train(args=parser.parse_args())

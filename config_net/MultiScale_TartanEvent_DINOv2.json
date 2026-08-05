@@ -1,9 +1,12 @@
 {
-    "INFO": "this test uses cell_value for predictions",
-    "experiment_name": "MultiScale",
+    "INFO": "Phase 1 frozen Depth Anything V2-S branch; branch outputs do not affect RAMP",
+    "experiment_name": "MultiScale_DINOv2_Phase1",
     "subtype": "warm_start",
     "path_pickle_dataset": "datasets_pickle/TartanEvent.pickle",
     "event_representation": "stack",
+    "loss": {
+        "prior_weight": 10.0
+    },
     "data_loader": {
         "train": {
             "args": {
@@ -32,7 +35,27 @@
                 "sequence_length": 1,
                 "num_event_bins": 5,
                 "image_height": 480,
-                "image_width": 640
+                "image_width": 640,
+                "dino": {
+                    "enabled": true,
+                    "checkpoint": "checkpoints/depth_anything_v2_vits.pth",
+                    "checkpoint_sha256": "715fade13be8f229f8a70cc02066f656f2423a59effd0579197bbf57860e1378",
+                    "encoder": "vits",
+                    "micro_batch": 1,
+                    "amp_dtype": "float16",
+                    "freeze_pretrained": true,
+                    "input_range": "ramp_default",
+                    "context": {"enabled": true},
+                    "prior": {"enabled": true},
+                    "depth": {
+                        "enabled": true,
+                        "mode": "constant",
+                        "epsilon": 1e-6,
+                        "scale_ema": 0.9,
+                        "min_scale_samples": 20
+                    },
+                    "matching": {"enabled": false}
+                }
             }
         },
         "test": {
@@ -41,36 +64,7 @@
             "test_split": [
                 "carwelding/Easy/P007",
                 "abandonedfactory/Easy/P011",
-                "abandonedfactory/Hard/P011",
-                "abandonedfactory_night/Easy/P013",
-                "abandonedfactory_night/Hard/P014",
-                "amusement/Easy/P008",
-                "amusement/Hard/P007",
-                "endofworld/Easy/P009",
-                "gascola/Easy/P008",
-                "gascola/Hard/P009",
-                "hospital/Easy/P036",
-                "hospital/Hard/P049",
-                "japanesealley/Easy/P007",
-                "japanesealley/Hard/P005",
-                "neighborhood/Easy/P021",
-                "neighborhood/Hard/P017",
-                "ocean/Easy/P013",
-                "ocean/Hard/P009",
-                "office2/Easy/P011",
-                "office2/Hard/P010",
-                "office/Hard/P007",
-                "oldtown/Easy/P007",
-                "oldtown/Hard/P008",
-                "seasidetown/Easy/P009",
-                "seasonsforest/Easy/P011",
-                "seasonsforest/Hard/P006",
-                "seasonsforest_winter/Easy/P009",
-                "seasonsforest_winter/Hard/P018",
-                "soulcity/Easy/P012",
-                "soulcity/Hard/P009",
-                "westerndesert/Easy/P013",
-                "westerndesert/Hard/P007"
+                "abandonedfactory/Hard/P011"
             ],
             "use_pose_pred": false
         }

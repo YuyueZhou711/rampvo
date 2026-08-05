@@ -8,6 +8,8 @@ from . import lietorch
 from .lietorch import SE3
 
 from .net import VONet
+from .checkpoints import load_ramp_state_dict
+from .model_types import SelectorMode, resolve_selector_mode
 from .utils import *
 from .utils import preprocess_input, filter_features
 from . import projective_ops as pops
@@ -27,7 +29,13 @@ Id = SE3.Identity(1, device="cuda")
 class Ramp_vo:
     def __init__(self, cfg, network, train_cfg, ht=480, wd=640):
         self.cfg = cfg
-        self.event_bias = train_cfg["event_bias"]
+        self.selector_mode = resolve_selector_mode(
+            train_cfg.get("eval_selector_mode", train_cfg.get("train_selector_mode")),
+            event_bias=train_cfg.get("event_bias"),
+            gradient_bias=train_cfg.get("gradient_bias"),
+        )
+        # Retained for compatibility with code that reads the legacy flag.
+        self.event_bias = self.selector_mode == SelectorMode.EVENT
         self.train_cfg = train_cfg
 
         # attributes for pose prediction
@@ -42,6 +50,15 @@ class Ramp_vo:
         self.n = 0      # number of frames
         self.m = 0      # number of patches
         self.M = self.cfg.PATCHES_PER_FRAME
+        configured_train_patches = train_cfg.get("patches_per_frame")
+        if (
+            configured_train_patches is not None
+            and int(configured_train_patches) != self.M
+        ):
+            raise ValueError(
+                "Training and online patches-per-frame must match: "
+                f"train={configured_train_patches}, online={self.M}"
+            )
         self.N = self.cfg.BUFFER_SIZE
 
         self.ht = ht    # image height
@@ -115,7 +132,7 @@ class Ramp_vo:
                     new_state_dict[k.replace('module.', '')] = v
             
             self.network = VONet(cfg=self.train_cfg)
-            self.network.load_state_dict(new_state_dict)
+            load_ramp_state_dict(self.network, new_state_dict)
 
         else:
             self.network = network
@@ -329,17 +346,21 @@ class Ramp_vo:
         input_ = preprocess_input(input_tensor=input_tensor)
         
         with autocast:
-            fmap, gmap, imap, patches, _, clr = self.network.patchify(
-                                            input_=input_,
-                                            patches_per_image=self.cfg.PATCHES_PER_FRAME, 
-                                            event_bias=self.event_bias,
-                                            reinit_hidden=True if tstamp == 0 else False,
-                                            )
-        if len(input_) > 2:
-            _, _, mask = input_
-            if not mask and mask is not None:
-                # if only events only update the super state but not the VO
-                return
+            patchify_output = self.network.patchify(
+                input_=input_,
+                patches_per_image=self.M,
+                selector_mode=self.selector_mode,
+                reinit_hidden=tstamp == 0,
+            )
+        if patchify_output is None:
+            # Event-only packets update the RAMP super-state but not VO state.
+            return
+
+        fmap = patchify_output.fmap
+        gmap = patchify_output.gmap
+        imap = patchify_output.imap
+        patches = patchify_output.patches
+        clr = patchify_output.colors
 
         ### update state attributes ###
         self.tlist.append(tstamp)

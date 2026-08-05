@@ -189,7 +189,17 @@ def get_coords_from_topk_events(
     border_suppression_size=0,
     non_max_supp_rad=0,
 ):
-    positive_event_tensor = torch.abs(events.squeeze(0))
+    if events.ndim == 5:
+        if events.shape[0] != 1:
+            raise NotImplementedError("Event selector currently supports batch size B=1 only")
+        events = events[0]
+    elif events.ndim != 4:
+        raise ValueError(
+            "events must have shape [B,N,C,H,W] or [N,C,H,W], "
+            f"got {tuple(events.shape)}"
+        )
+
+    positive_event_tensor = torch.abs(events)
     downsampled_event_tensor = F.avg_pool2d(positive_event_tensor, 4, 4)
     event_in_xy_form = downsampled_event_tensor.transpose(3, 2)
     ev_mean = torch.mean(event_in_xy_form, dim=1)
@@ -214,7 +224,7 @@ def get_coords_from_topk_events(
 
     # compute the batch indices of the top k values in the flattened tensor
     batch_indices = (
-        torch.arange(ev_mean.shape[0], device="cuda")
+        torch.arange(ev_mean.shape[0], device=ev_mean.device)
         .view(-1, 1)
         .repeat(1, patches_per_image)
     )
