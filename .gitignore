@@ -40,3 +40,4 @@ datasets_pickle
 results
 eigen-3.4.0
 *.bash
+artifacts/
